@@ -1,5 +1,5 @@
-from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
 from transformers import pipeline
 
 print("Ładowanie modeli...")
@@ -15,10 +15,10 @@ llm = pipeline(
     temperature=0.7,
 )
 
+
 def rag_query(question: str):
     query_vec = model.encode([question])[0].tolist()
 
-    # Nowe API qdrant-client
     results = client.query_points(
         collection_name="photography",
         query=query_vec,
@@ -42,7 +42,6 @@ Pytanie: {question}</s>
     return response
 
 
-# ── Pętla czatu ──────────────────────────────────────────
 print("\n🎞️  Asystent fotograficzny gotowy!")
 print("Wpisz pytanie lub 'quit' żeby wyjść.\n")
 
