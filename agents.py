@@ -1,63 +1,77 @@
 from agno.agent import Agent
 from agno.models.ollama import Ollama
-from agno.tools import Toolkit
-from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
+from sentence_transformers import SentenceTransformer
 
 embed_model = SentenceTransformer("all-MiniLM-L6-v2")
 qdrant = QdrantClient("localhost", port=6333)
 
-# ── Klasa zamiast dekoratora ─────────────────────────────
-class RagToolkit(Toolkit):
-    def __init__(self, collection: str):
-        super().__init__(name=f"search_{collection}")
-        self.collection = collection
-        self.register(self.search)
 
-    def search(self, query: str) -> str:
-        """Przeszukaj bazę wiedzy i zwróć pasujące fragmenty."""
+def get_context(collection: str, query: str) -> str:
+    try:
         vec = embed_model.encode([query])[0].tolist()
         results = qdrant.query_points(
-            collection_name=self.collection,
+            collection_name=collection,
             query=vec,
             limit=3
         ).points
         if not results:
-            return "Brak wyników w bazie wiedzy."
-        parts = [f"[{r.payload['source']}]\n{r.payload['text']}" for r in results]
-        return "\n\n---\n\n".join(parts)
+            return "Brak danych w bazie wiedzy."
+        return "\n\n---\n\n".join(
+            f"[{r.payload['source']}]\n{r.payload['text']}"
+            for r in results
+        )
+    except Exception as e:
+        return f"Błąd wyszukiwania: {e}"
 
-# ── Definicje agentów ────────────────────────────────────
-model = Ollama(id="llama3.2")
 
-sprzet_agent = Agent(
+def make_agent(name: str, role: str, collection: str, topic: str) -> Agent:
+    class RagAgent(Agent):
+        def run(self, *args, **kwargs):
+            # Wyciągnij pytanie niezależnie od nazwy argumentu
+            message = kwargs.get("input") or kwargs.get("message") or (args[0] if args else "")
+
+            context = get_context(collection, str(message))
+            self.instructions = f"""Jesteś {role}.
+Odpowiadaj TYLKO na podstawie poniższego kontekstu.
+Jeśli nie ma odpowiedzi w kontekście, powiedz że nie wiem.
+
+=== KONTEKST ===
+{context}
+================"""
+            return super().run(*args, **kwargs)
+
+    return RagAgent(
+        name=name,
+        role=role,
+        model=Ollama(id="llama3.2"),
+    )
+
+
+sprzet_agent = make_agent(
     name="SprzętAgent",
-    role="Ekspert od sprzętu",
-    model=model,
-    tools=[RagToolkit("sprzet")],
-    instructions="Odpowiadaj tylko na pytania o ciężki sprzęt budowlany. Zawsze szukaj w bazie wiedzy.",
+    role="Ekspert od sprzętu budowlanego",
+    collection="sprzet",
+    topic="ciężki sprzęt budowlany",
 )
 
-technika_agent = Agent(
+technika_agent = make_agent(
     name="TechnikaAgent",
     role="Ekspert od techniki",
-    model=model,
-    tools=[RagToolkit("technika")],
-    instructions="Odpowiadaj na pytania o technikę. Zawsze szukaj w bazie wiedzy.",
+    collection="technika",
+    topic="technika i maszyny",
 )
 
-historia_agent = Agent(
+historia_agent = make_agent(
     name="HistoriaAgent",
     role="Historyk",
-    model=model,
-    tools=[RagToolkit("historia")],
-    instructions="Odpowiadaj na pytania historyczne. Zawsze szukaj w bazie wiedzy.",
+    collection="historia",
+    topic="historia i bitwy",
 )
 
-photo_agent = Agent(
+photo_agent = make_agent(
     name="PhotoAgent",
     role="Ekspert od fotografii",
-    model=model,
-    tools=[RagToolkit("fotografia")],
-    instructions="Odpowiadaj na pytania o fotografię. Zawsze szukaj w bazie wiedzy.",
+    collection="fotografia",
+    topic="fotografia i zdjęcia",
 )

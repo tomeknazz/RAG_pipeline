@@ -1,18 +1,9 @@
-# poprzednie
-# 10 audio do embedingow przez clipa i recznie piszemy podobienstwo
-
-
-#  znalezc 10 dokumentow odnosnie jakiejs wiedyz (fotorgrafia)
-# postawic qdrant
-# stworzyc pipeline zeby przerobic na embeddingi
-# pobrac llm z hugging face
-# przetworzyć prompta i dodać RAG
-
-
-from sentence_transformers import SentenceTransformer
+import os
+import uuid
+import fitz
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams, PointStruct
-import fitz, os, uuid
+from sentence_transformers import SentenceTransformer
 
 client = QdrantClient("localhost", port=6333)
 model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -72,4 +63,4 @@ for name, folder in COLLECTIONS.items():
             for e, c in zip(embeddings, chunks)
         ]
     )
-    print(f"✅ [{name}] — {len(chunks)} chunków")
+    print(f"[{name}] — {len(chunks)} chunków")
