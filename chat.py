@@ -1,61 +1,49 @@
-from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
-from transformers import pipeline
+import phoenix as px
+from phoenix.otel import register
+from agno.team import Team
+from agno.models.ollama import Ollama
+from agents import sprzet_agent, technika_agent, historia_agent, photo_agent
 
-print("Ładowanie modeli...")
+# ── 1. Uruchom Phoenix lokalnie ──────────────────────────
+px.launch_app()  # http://localhost:6006
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
-client = QdrantClient("localhost", port=6333)
-
-llm = pipeline(
-    "text-generation",
-    model="TinyLlama/TinyLlama-1.1B-Chat-v1.0",
-    max_new_tokens=512,
-    do_sample=True,
-    temperature=0.7,
+register(
+    project_name="photo-multi-agent-rag",
+    auto_instrument=True  # ← cała magia w jednej linii
 )
 
+# ── 2. Zespół agentów z wbudowanym routerem ──────────────
+team = Team(
+    name="FotografiaTeam",
+    mode="route",  # router automatycznie wybiera agenta
+    model=Ollama(id="llama3.2"),
+    members=[
+        sprzet_agent,
+        technika_agent,
+        historia_agent,
+        photo_agent,
+    ],
+    instructions="""
+    Jesteś routerem. Przekazuj pytania do odpowiedniego agenta:
+    - SprzętAgent: Wywrotka, Ciężki sprzęt, wywrotka
+    - TechnikaAgent: CNC, Roboty, technika
+    - HistoriaAgent: historia bitew, wojna światowa
+    - PhotoAgent: fotografia, ISO, zdjęcia
+    """,
+    show_members_responses=True,
+)
 
-def rag_query(question: str):
-    query_vec = model.encode([question])[0].tolist()
-
-    results = client.query_points(
-        collection_name="photography",
-        query=query_vec,
-        limit=3
-    ).points
-
-    context = "\n\n".join([r.payload["text"] for r in results])
-    sources = list(set([r.payload["source"] for r in results]))
-    print(f"\n📚 Źródła: {', '.join(sources)}")
-
-    prompt = f"""<|system|>
-Jesteś ekspertem od fotografii. Odpowiadaj krótko i na temat, tylko na podstawie kontekstu.</s>
-<|user|>
-Kontekst: {context}
-
-Pytanie: {question}</s>
-<|assistant|>"""
-
-    output = llm(prompt)[0]["generated_text"]
-    response = output.split("<|assistant|>")[-1].strip()
-    return response
-
-
-print("\n🎞️  Asystent fotograficzny gotowy!")
-print("Wpisz pytanie lub 'quit' żeby wyjść.\n")
+# ── 3. Pętla czatu ───────────────────────────────────────
+print("\n🎞️  Multi-Agent RAG (AGNO) gotowy!")
+print("📊 Phoenix: http://localhost:6006")
+print("Wpisz pytanie lub 'quit'\n")
 
 while True:
     question = input("Ty: ").strip()
-
     if not question:
         continue
-
     if question.lower() in ("quit", "exit", "q"):
-        print("Do widzenia!")
         break
 
-    print("\nAsystent: ", end="", flush=True)
-    answer = rag_query(question)
-    print(answer)
+    team.print_response(question, stream=True)
     print("-" * 60)
